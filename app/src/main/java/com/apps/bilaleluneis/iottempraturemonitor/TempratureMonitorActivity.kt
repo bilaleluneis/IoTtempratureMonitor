@@ -1,6 +1,7 @@
 package com.apps.bilaleluneis.iottempraturemonitor
 
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +10,8 @@ import com.google.android.things.contrib.driver.bmx280.Bmx280
 import com.google.android.things.contrib.driver.ht16k33.AlphanumericDisplay
 import com.google.android.things.contrib.driver.rainbowhat.RainbowHat
 import kotlin.properties.Delegates
+
+
 
 /**
  * @author Bilal El Uneis
@@ -23,7 +26,9 @@ class TempratureMonitorActivity : Activity() {
     private val logTag = "TempratureMonitorActivity"
     private val tempratureSensor by lazy { initTempratureSensor() }
     private val display by lazy { initDisplay() }
-    private val looper = Handler(Looper.getMainLooper()) //TODO: read about this, and find what is better
+    private val threadHandler = Handler(Looper.getMainLooper())
+    private val blueToothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+
     /**
      This is cool! an observable property , similar to Swift willSet and didSet
      the property initial value is 0, I used _ for first two arguments in Lambda
@@ -44,33 +49,16 @@ class TempratureMonitorActivity : Activity() {
 
         super.onCreate(savedInstanceState)
         Log.d(logTag, "Inside OnCreate!")
+        initBlueToothOnSBC()
         backgroundLooper()
 
     }
 
-    /**
-     * trying to turn off sensors and display when activity is destroyed.
-     * need to look into activity LC to understand what else i might need to
-     * override for clean up and shutdown
-     */
     override fun onDestroy() {
 
         super.onDestroy()
         Log.d(logTag, "Inside OnDestroy!")
-        display.clear()
-        display.setEnabled(false)
-        display.close()
-        tempratureSensor.close()
-
-    }
-
-    /**
-     * again trying to reset and turnoff sensors
-     */
-    override fun onRestart() {
-
-        super.onRestart()
-        Log.d(logTag, "Inside OnRestart!!")
+        cleanUpBeforeExit()
 
     }
 
@@ -104,7 +92,45 @@ class TempratureMonitorActivity : Activity() {
         display.display(temprature.toString())
         counterToClearDisplay ++
         //repeat every 10 seconds!
-        looper.postDelayed(this::backgroundLooper, 10000)
+        threadHandler.postDelayed(this::backgroundLooper, 10000)
+
+    }
+
+    /**
+     * init the bluetooth on the Rasberry PI or Single Board Computer
+     */
+    private fun initBlueToothOnSBC() {
+
+        blueToothAdapter?.let{
+            Log.d(logTag, "BlueTooth Adapter is Set!")
+            it.enable()
+            Log.d(logTag, "BlueTooth Enabled Flag is ${it.isEnabled}")
+            return
+        }
+
+        println("BlueTooth Adapter was not Set !!")
+    }
+
+    /**
+     * this method will be called onRestart() and onStop
+     */
+    private fun cleanUpBeforeExit() {
+
+        Log.d(logTag, "Init Clean Before Existing or Restarting Activity!")
+        threadHandler.removeCallbacksAndMessages(null)
+        /**
+         * this is another way instead of having to do
+         * display.clear() display.setEnabled() display.close()
+         */
+        with(display){
+            clear()
+            setEnabled(false)
+            close()
+        }
+
+        tempratureSensor.close()
+        blueToothAdapter?.disable()
+        Log.d(logTag, "Clean up completed !")
 
     }
 
