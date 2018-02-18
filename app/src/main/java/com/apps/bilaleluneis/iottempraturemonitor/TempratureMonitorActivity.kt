@@ -2,7 +2,7 @@ package com.apps.bilaleluneis.iottempraturemonitor
 
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
-import android.os.Bundle
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -28,6 +28,7 @@ class TempratureMonitorActivity : Activity() {
     private val display by lazy { initDisplay() }
     private val threadHandler = Handler(Looper.getMainLooper())
     private val blueToothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val friendlyBlueToothName = "Temperature Monitor"
 
     /**
      This is cool! an observable property , similar to Swift willSet and didSet
@@ -45,19 +46,35 @@ class TempratureMonitorActivity : Activity() {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    /**
+     * after some reading, I think this is the best place to put initialization code
+     * instead of [onCreate].. because onStart() will get called always after onCreate()
+     * or [onRestart]. and if I do debugging using instant run (hot code swap) then
+     * the onCreate() wont get called .. instead onRestart() will. so this way I can
+     * account for both when activity is created or restarted.
+     */
+    override fun onStart() {
 
-        super.onCreate(savedInstanceState)
-        Log.d(logTag, "Inside OnCreate!")
-        initBlueToothOnSBC()
+        super.onStart()
+        Log.d(logTag, "Inside OnStart!")
+        if( initBlueToothOnSBC() ){
+            Log.d(logTag, "Enabling BlueTooth Discovery Mode !")
+            enableBlueToothDiscoveryMode()
+        }
         backgroundLooper()
 
     }
 
-    override fun onDestroy() {
+    /**
+     * after some reading. onStop is best place to do clean up instead of [onDestroy],
+     * onStop() will get called before onDestroy() and [onRestart].
+     * and instant run (hot code swap) will call onStop() then on Restart(),
+     * while exiting or killing the process will call onStop() then on Destroy()
+     */
+    override fun onStop() {
 
-        super.onDestroy()
-        Log.d(logTag, "Inside OnDestroy!")
+        super.onStop()
+        Log.d(logTag, "Inside OnStop!")
         cleanUpBeforeExit()
 
     }
@@ -97,18 +114,30 @@ class TempratureMonitorActivity : Activity() {
     }
 
     /**
-     * init the bluetooth on the Rasberry PI or Single Board Computer
+     * init the bluetooth on the Raspberry PI 3B or Single Board Computer
+     * this should work on any SBC that has bluetooth component
      */
-    private fun initBlueToothOnSBC() {
+    private fun initBlueToothOnSBC() : Boolean{
 
         blueToothAdapter?.let{
-            Log.d(logTag, "BlueTooth Adapter is Set!")
-            it.enable()
-            Log.d(logTag, "BlueTooth Enabled Flag is ${it.isEnabled}")
-            return
+            Log.d(logTag, "BlueTooth Adapter is Available on SBC!")
+            if(!it.isEnabled){ it.enable() }
+            it.name = friendlyBlueToothName
+            Log.d(logTag, "BlueTooth Name is ${it.name}")
+            return true
         }
 
-        println("BlueTooth Adapter was not Set !!")
+        println("BlueTooth Adapter not Available on SBC.. No BlueTooth Support !")
+        return false
+    }
+
+    //TODO: see if you can rid of the val and use let{} .. would be nice!
+    private fun enableBlueToothDiscoveryMode() {
+
+        val discoveryIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+        discoveryIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+        startActivityForResult(discoveryIntent,100)
+
     }
 
     /**
