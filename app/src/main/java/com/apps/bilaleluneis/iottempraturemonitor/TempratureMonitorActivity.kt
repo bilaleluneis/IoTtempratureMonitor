@@ -129,20 +129,18 @@ class TempratureMonitorActivity : Activity() {
 
         println("BlueTooth Adapter not Available on SBC.. No BlueTooth Support !")
         return false
+
     }
 
-    //TODO: see if you can rid of the val and use let{} .. would be nice!
     private fun enableBlueToothDiscoveryMode() {
 
-        val discoveryIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-        discoveryIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
-        startActivityForResult(discoveryIntent,100)
+        Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+            startActivityForResult(this,100)
+        }
 
     }
 
-    /**
-     * this method will be called onRestart() and onStop
-     */
     private fun cleanUpBeforeExit() {
 
         Log.d(logTag, "Init Clean Before Existing or Restarting Activity!")
