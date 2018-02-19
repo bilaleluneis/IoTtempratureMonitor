@@ -135,8 +135,8 @@ class TempratureMonitorActivity : Activity() {
     private fun enableBlueToothDiscoveryMode() {
 
         Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
-            startActivityForResult(this,100)
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300) //TODO: create const
+            startActivityForResult(this,100) //TODO:create const
         }
 
     }
