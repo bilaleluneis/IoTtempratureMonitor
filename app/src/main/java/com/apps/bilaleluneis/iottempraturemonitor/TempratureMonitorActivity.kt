@@ -132,6 +132,11 @@ class TempratureMonitorActivity : Activity() {
 
     }
 
+    /**
+     * this basically will make the Bluetooth on SBC discoverable
+     * by sending out broadcast with the Bluetooth name for listeners
+     * to find.
+     */
     private fun enableBlueToothDiscoveryMode() {
 
         Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
