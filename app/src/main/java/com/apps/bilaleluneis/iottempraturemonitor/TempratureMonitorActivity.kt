@@ -2,6 +2,8 @@ package com.apps.bilaleluneis.iottempraturemonitor
 
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +11,9 @@ import android.util.Log
 import com.google.android.things.contrib.driver.bmx280.Bmx280
 import com.google.android.things.contrib.driver.ht16k33.AlphanumericDisplay
 import com.google.android.things.contrib.driver.rainbowhat.RainbowHat
+import kotlinx.coroutines.experimental.launch
+import java.io.OutputStreamWriter
+import java.util.*
 import kotlin.properties.Delegates
 
 
@@ -28,7 +33,11 @@ class TempratureMonitorActivity : Activity() {
     private val display by lazy { initDisplay() }
     private val threadHandler = Handler(Looper.getMainLooper())
     private val blueToothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private var bluetoothServerSocket: BluetoothServerSocket? = null
+    private var bluetoothSocket: BluetoothSocket? = null
     private val friendlyBlueToothName = "Temperature Monitor"
+    private val uuid = UUID.fromString("4e5d48e0-75df-11e3-981f-0800200c9a66")
+    private var messageToClientBluetooth: OutputStreamWriter? = null
 
     /**
      This is cool! an observable property , similar to Swift willSet and didSet
@@ -60,6 +69,8 @@ class TempratureMonitorActivity : Activity() {
         if( initBlueToothOnSBC() ){
             Log.d(logTag, "Enabling BlueTooth Discovery Mode !")
             enableBlueToothDiscoveryMode()
+            //launch{} will run the code inside in a lite async thread!
+            launch{ listenToClientConnection() } //TODO: document this in Learning Kotlin!
         }
         backgroundLooper()
 
@@ -110,6 +121,44 @@ class TempratureMonitorActivity : Activity() {
         counterToClearDisplay ++
         //repeat every 10 seconds!
         threadHandler.postDelayed(this::backgroundLooper, 10000)
+        threadHandler.postDelayed({ this.sendTemperatureUpdatesToClientBluetooth(temprature.toString()) },10000)
+
+    }
+
+    /**
+     *  send temperature updates to client
+     */
+    private fun sendTemperatureUpdatesToClientBluetooth(temperature : String) {
+
+        Log.d(logTag, "inside sendTempUpdateToClient !")
+
+        bluetoothSocket?.apply{
+            Log.d(logTag, "checking if there is a client connected !")
+            if(isConnected){
+                Log.d(logTag, "sending temperature value of $temperature to client !")
+                messageToClientBluetooth = OutputStreamWriter(bluetoothSocket?.outputStream)
+                messageToClientBluetooth?.write(temperature)
+            }else{
+                Log.d(logTag, "No current client connected at this time!")
+            }
+        }
+
+    }
+
+    /**
+     * this code will is blocking , so will need to be used with coroutines to run
+     * and not end up blocking the main thread or UI thread.
+     */
+    private fun listenToClientConnection() {
+
+        if(bluetoothServerSocket == null){
+            Log.d(logTag, "Init bluetooth Server Socket !")
+            bluetoothServerSocket = blueToothAdapter?.listenUsingRfcommWithServiceRecord(friendlyBlueToothName, uuid)
+            Log.d(logTag, "Server Socket is listening for client connection....")
+            bluetoothSocket = bluetoothServerSocket?.accept()
+            Log.d(logTag,"${bluetoothSocket?.remoteDevice?.name} is connected to IoT bluetooth")
+            bluetoothServerSocket?.close() // this will close connection ensuring only one device is connected !
+        }
 
     }
 
@@ -140,7 +189,9 @@ class TempratureMonitorActivity : Activity() {
     private fun enableBlueToothDiscoveryMode() {
 
         Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300) //TODO: create const
+            // using value 0 which keeps this bluetooth discoverable always.. will drain battery!
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 0)
+            //requestCode is just value sent.. don't really care for it for this application
             startActivityForResult(this,100) //TODO:create const
         }
 
@@ -161,6 +212,7 @@ class TempratureMonitorActivity : Activity() {
         }
 
         tempratureSensor.close()
+        bluetoothSocket?.close()
         blueToothAdapter?.disable()
         Log.d(logTag, "Clean up completed !")
 
