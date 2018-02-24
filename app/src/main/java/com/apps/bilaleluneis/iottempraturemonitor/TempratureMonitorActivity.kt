@@ -135,9 +135,12 @@ class TempratureMonitorActivity : Activity() {
         bluetoothSocket?.apply{
             Log.d(logTag, "checking if there is a client connected !")
             if(isConnected){
-                Log.d(logTag, "sending temperature value of $temperature to client !")
+                Log.d(logTag, "sending temperature value of $temperature to client ${bluetoothSocket?.remoteDevice?.name} !")
                 messageToClientBluetooth = OutputStreamWriter(bluetoothSocket?.outputStream)
                 messageToClientBluetooth?.write(temperature)
+                messageToClientBluetooth?.flush()
+                Log.d(logTag, "message sent and flushed !")
+                Thread.sleep(1000) //not sure this will help.. just trying to make it work
             }else{
                 Log.d(logTag, "No current client connected at this time!")
             }
@@ -186,6 +189,7 @@ class TempratureMonitorActivity : Activity() {
      * by sending out broadcast with the Bluetooth name for listeners
      * to find.
      */
+    //TODO: change this to run in background every 3 mins and discoverable for 1  mins at a time
     private fun enableBlueToothDiscoveryMode() {
 
         Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
@@ -211,9 +215,11 @@ class TempratureMonitorActivity : Activity() {
             close()
         }
 
+        messageToClientBluetooth?.close()
         tempratureSensor.close()
         bluetoothSocket?.close()
         blueToothAdapter?.disable()
+
         Log.d(logTag, "Clean up completed !")
 
     }
