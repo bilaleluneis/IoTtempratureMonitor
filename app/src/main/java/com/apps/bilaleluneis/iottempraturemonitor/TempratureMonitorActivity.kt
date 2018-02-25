@@ -2,7 +2,6 @@ package com.apps.bilaleluneis.iottempraturemonitor
 
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Intent
 import android.os.Handler
@@ -11,7 +10,9 @@ import android.util.Log
 import com.google.android.things.contrib.driver.bmx280.Bmx280
 import com.google.android.things.contrib.driver.ht16k33.AlphanumericDisplay
 import com.google.android.things.contrib.driver.rainbowhat.RainbowHat
+import kotlinx.coroutines.experimental.delay
 import kotlinx.coroutines.experimental.launch
+import java.io.IOException
 import java.io.OutputStreamWriter
 import java.util.*
 import kotlin.properties.Delegates
@@ -26,6 +27,7 @@ import kotlin.properties.Delegates
  * https://www.youtube.com/watch?v=v3Dm5aeuQKE&t=1152s
  */
 
+//TODO: Thinking at some point take out the bluetooth stuff to diff file, class, etc
 class TempratureMonitorActivity : Activity() {
 
     private val logTag = "TempratureMonitorActivity"
@@ -33,11 +35,9 @@ class TempratureMonitorActivity : Activity() {
     private val display by lazy { initDisplay() }
     private val threadHandler = Handler(Looper.getMainLooper())
     private val blueToothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-    private var bluetoothServerSocket: BluetoothServerSocket? = null
     private var bluetoothSocket: BluetoothSocket? = null
-    private val friendlyBlueToothName = "Temperature Monitor"
+    private val friendlyBlueToothName = "Temperature Monitor IoT"
     private val uuid = UUID.fromString("4e5d48e0-75df-11e3-981f-0800200c9a66")
-    private var messageToClientBluetooth: OutputStreamWriter? = null
 
     /**
      This is cool! an observable property , similar to Swift willSet and didSet
@@ -134,15 +134,17 @@ class TempratureMonitorActivity : Activity() {
 
         bluetoothSocket?.apply{
             Log.d(logTag, "checking if there is a client connected !")
+            val messageToClientBluetooth = OutputStreamWriter(outputStream)
             if(isConnected){
-                Log.d(logTag, "sending temperature value of $temperature to client ${bluetoothSocket?.remoteDevice?.name} !")
-                messageToClientBluetooth = OutputStreamWriter(bluetoothSocket?.outputStream)
-                messageToClientBluetooth?.write(temperature)
-                messageToClientBluetooth?.flush()
-                Log.d(logTag, "message sent and flushed !")
-                Thread.sleep(1000) //not sure this will help.. just trying to make it work
-            }else{
-                Log.d(logTag, "No current client connected at this time!")
+                Log.d(logTag, "sending temperature value of $temperature to client ${remoteDevice.name} !")
+                try{
+                    messageToClientBluetooth.write(temperature)
+                    messageToClientBluetooth.flush()
+                    Log.d(logTag, "message sent and flushed !")
+                }catch(exception: IOException){
+                    Log.e(logTag, "IOException most likely during flush()")
+                    messageToClientBluetooth.close()
+                }
             }
         }
 
@@ -152,30 +154,41 @@ class TempratureMonitorActivity : Activity() {
      * this code will is blocking , so will need to be used with coroutines to run
      * and not end up blocking the main thread or UI thread.
      */
-    private fun listenToClientConnection() {
+    private suspend fun listenToClientConnection() {
 
-        if(bluetoothServerSocket == null){
-            Log.d(logTag, "Init bluetooth Server Socket !")
-            bluetoothServerSocket = blueToothAdapter?.listenUsingRfcommWithServiceRecord(friendlyBlueToothName, uuid)
-            Log.d(logTag, "Server Socket is listening for client connection....")
-            bluetoothSocket = bluetoothServerSocket?.accept()
-            Log.d(logTag,"${bluetoothSocket?.remoteDevice?.name} is connected to IoT bluetooth")
-            bluetoothServerSocket?.close() // this will close connection ensuring only one device is connected !
+        Log.d(logTag, "Init bluetooth Server Socket !")
+        blueToothAdapter?.listenUsingRfcommWithServiceRecord(friendlyBlueToothName, uuid)?.apply {
+            while(true){
+                delay(2)
+                if(bluetoothSocket == null || !bluetoothSocket?.isConnected!!){
+                    Log.d(logTag, "Server Socket is listening for client connection....")
+                    bluetoothSocket = accept()
+                    Log.d(logTag,"${bluetoothSocket?.remoteDevice?.name} is connected to IoT bluetooth")
+                    close() // this will close connection ensuring only one device is connected !
+                }
+            }
         }
 
     }
 
     /**
      * init the bluetooth on the Raspberry PI 3B or Single Board Computer
-     * this should work on any SBC that has bluetooth component
+     * this should work on any SBC that has bluetooth component.
+     * the method will check that adapter is not null, then will enable it
+     * if it is not enabled and finally assign a name "Temperature Monitor IoT"
+     * to the [blueToothAdapter]
      */
     private fun initBlueToothOnSBC() : Boolean{
 
-        blueToothAdapter?.let{
+        blueToothAdapter?.apply{
             Log.d(logTag, "BlueTooth Adapter is Available on SBC!")
-            if(!it.isEnabled){ it.enable() }
-            it.name = friendlyBlueToothName
-            Log.d(logTag, "BlueTooth Name is ${it.name}")
+            if(!isEnabled){
+                Log.d(logTag, "Bluetooth adapter is disabled ... Enabling !")
+                enable()
+                Log.d(logTag, "Bluetooth adapter is now Enabled !")
+            }
+            name = friendlyBlueToothName
+            Log.d(logTag, "BlueTooth Name is $name")
             return true
         }
 
@@ -201,6 +214,9 @@ class TempratureMonitorActivity : Activity() {
 
     }
 
+    /**
+     * perform cleanups on resources and sensors
+     */
     private fun cleanUpBeforeExit() {
 
         Log.d(logTag, "Init Clean Before Existing or Restarting Activity!")
@@ -215,11 +231,9 @@ class TempratureMonitorActivity : Activity() {
             close()
         }
 
-        messageToClientBluetooth?.close()
         tempratureSensor.close()
         bluetoothSocket?.close()
         blueToothAdapter?.disable()
-
         Log.d(logTag, "Clean up completed !")
 
     }
